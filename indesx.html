@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Minecraft LED Sign Generator</title>
+<style>
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;padding:26px 16px 48px;
+    background:radial-gradient(circle at 50% -10%,#232323,#0b0b0b 60%);
+    color:#e6e6e6;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  h1{font-size:20px;margin:0 0 4px;letter-spacing:.5px;text-align:center}
+  .sub{font-size:13px;color:#8a8a8a;margin:0 0 24px;text-align:center}
+
+  .wrap{
+    display:flex;flex-direction:column;gap:20px;
+    max-width:1100px;margin:0 auto;
+  }
+
+  .panel{
+    background:#171717;border:1px solid #2a2a2a;border-radius:14px;
+    padding:18px;box-shadow:0 10px 30px #0007;
+  }
+  .panel h2{
+    font-size:12px;text-transform:uppercase;letter-spacing:1.4px;
+    color:#7a7a7a;margin:0 0 14px;font-weight:600;
+  }
+
+  /* ---------------- palette ---------------- */
+  .palette{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(46px, 1fr));
+    gap:8px;
+  }
+  .swatch{
+    aspect-ratio:1/1;
+    border-radius:10px;
+    border:2px solid #2a2a2a;
+    cursor:pointer;
+    padding:0;
+    transition:transform .12s, box-shadow .12s, border-color .12s;
+    outline:none;
+  }
+  .swatch:hover{
+    transform:scale(1.12);
+    border-color:#b0b0b0;
+    z-index:2;
+  }
+  .swatch.active{
+    border-color:#ffffff;
+    box-shadow:0 0 0 2px #171717, 0 0 0 4px #ffffff;
+    z-index:3;
+  }
+
+  /* ---------------- tools ---------------- */
+  .tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .btn{
+    font-family:inherit;font-size:13px;padding:9px 14px;border-radius:8px;
+    border:1px solid #303030;background:#1c1c1c;color:#cfcfcf;cursor:pointer;
+    transition:background .15s, border-color .15s, color .15s;
+  }
+  .btn:hover{background:#242424;border-color:#454545}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
+  .btn:disabled:hover{background:#1c1c1c;border-color:#303030}
+
+  .btn.primary{
+    background:#262626;
+    border-color:#383838;
+    color:#b0b0b0;
+    font-weight:600;
+    letter-spacing:.4px;
+  }
+  .btn.primary:hover{
+    background:#f0f0f0;
+    border-color:#ffffff;
+    color:#0b0b0b;
+  }
+  .btn.primary.copied{
+    background:#2f5bd0;
+    border-color:#3f6ee6;
+    color:#ffffff;
+  }
+
+  .mode-btn{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:9px 14px;
+    font-size:13px;
+    background:#1c1c1c;
+    border-color:#303030;
+    color:#cfcfcf;
+  }
+  .mode-btn:hover{
+    background:#f0f0f0;
+    border-color:#ffffff;
+    color:#0b0b0b;
+  }
+  .mode-btn svg{flex:none}
+  .tools-spacer{flex:1}
+
+  /* ---------------- pan/zoom viewport ---------------- */
+  .viewport{
+    position:relative;
+    height:480px;
+    overflow:hidden;
+    background:#0a0a0a;
+    border:1px solid #232323;
+    border-radius:12px;
+    cursor:grab;
+    user-select:none;
+    touch-action:none;
+    background-image:
+      linear-gradient(#ffffff08 1px, transparent 1px),
+      linear-gradient(90deg, #ffffff08 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .viewport.panning,
+  .viewport.panning *{cursor:grabbing !important}
+  .viewport.painting,
+  .viewport.painting *{cursor:crosshair !important}
+
+  .world{
+    position:absolute;
+    top:0;left:0;
+    display:flex;
+    align-items:stretch;
+    gap:0;
+    padding:40px;
+    transform-origin:0 0;
+    will-change:transform;
+  }
+
+  .sign-card{
+    position:relative;
+    flex:none;
+    background:#0e0e0e;
+    border:2px solid #262626;
+    border-radius:10px;
+    padding:10px 10px 10px;
+    cursor:crosshair;
+    transition:
+      border-color .15s,
+      box-shadow .15s,
+      transform .28s cubic-bezier(.22, 1, .36, 1);
+  }
+  .sign-card button{cursor:pointer}
+
+  .sign-card.active-sign{
+    border-color:#4a4a4a;
+    box-shadow:0 0 0 1px #3a3a3a, 0 8px 24px #000a;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(9, 24px);
+    grid-template-rows:repeat(4, 24px);
+    gap:4px;
+    background:#080808;
+    padding:6px;
+    border-radius:8px;
+    border:1px solid #232323;
+  }
+  .grid.hanging{
+    grid-template-columns:repeat(6, 24px);
+  }
+
+  .cell{
+    border-radius:4px;
+    background:#000;
+    border:1px solid #454545;
+    cursor:crosshair;
+    transition:transform .05s, border-color .1s;
+  }
+  .cell.hidden{display:none}
+  .cell:hover{border-color:#a0a0a0}
+  .cell:active{transform:scale(.86)}
+
+  /* ---------------- edge ---------------- */
+  .edge{
+    flex:none;
+    position:relative;
+    z-index:10;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:default;
+    transition: transform .28s cubic-bezier(.22, 1, .36, 1);
+  }
+  .edge.outer{ width:48px; }
+  .edge.inner{ width:12px; }
+  .edge.inner:hover{ cursor:pointer; }
+
+  .edge.inner:hover ~ .sign-card,
+  .edge.inner:hover ~ .edge {
+    transform: translateX(23px);
+  }
+
+  .sign-card:has(~ .edge.inner:hover),
+  .edge:has(~ .edge.inner:hover) {
+    transform: translateX(-23px);
+  }
+
+  .add-sign{
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:24px;
+    height:80px;
+    border-radius:12px;
+    border:2px dashed #3a3a3a;
+    background:#161616;
+    color:#808080;
+    font-size:20px;
+    font-weight:300;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    font-family:inherit;
+    transform:translate(-50%, -50%) scale(1);
+    transition:
+      opacity .18s ease,
+      transform .25s cubic-bezier(.22, 1, .36, 1),
+      border-color .12s,
+      color .12s,
+      background .12s;
+  }
+  .add-sign:hover{
+    border-color:#d0d0d0;
+    color:#f0f0f0;
+    background:#222222;
+    transform:translate(-50%, -50%) scale(1.08);
+  }
+
+  .edge.outer .add-sign{ opacity:1; }
+
+  .edge.inner .add-sign{
+    opacity:0;
+    pointer-events:none;
+    transform:translate(-50%, -50%) scale(.5);
+  }
+  .edge.inner:hover .add-sign{
+    opacity:1;
+    pointer-events:auto;
+    transform:translate(-50%, -50%) scale(1);
+  }
+
+  /* ---------------- per-sign action row ---------------- */
+  .sign-actions{
+    display:flex;
+    gap:6px;
+    margin-top:8px;
+  }
+  .copy-sign{
+    flex:1;
+    padding:8px;
+    font-size:12.5px;
+  }
+  .icon-btn{
+    flex:none;
+    width:36px;
+    padding:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#1c1c1c;
+    border-color:#303030;
+    color:#8a8a8a;
+  }
+  .icon-btn:hover{
+    background:#f0f0f0;
+    border-color:#ffffff;
+    color:#0b0b0b;
+  }
+
+  /* ---------------- remove × ---------------- */
+  .remove-sign{
+    position:absolute;
+    top:-8px;
+    right:-8px;
+    width:20px;
+    height:20px;
+    border-radius:50%;
+    border:1px solid #303030;
+    background:#1c1c1c;
+    color:#8a8a8a;
+    font-size:12px;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    transition:opacity .12s, background .12s, border-color .12s, color .12s;
+    font-family:inherit;
+    z-index:6;
+    opacity:0;
+  }
+  .sign-card:hover .remove-sign{ opacity:1; }
+  .remove-sign:hover{
+    background:#4a1e1e;
+    border-color:#aa3333;
+    color:#ff8888;
+  }
+
+  .hint{font-size:11.5px;color:#6e6e6e;margin:14px 0 0;line-height:1.6}
+  .hint strong{color:#a8a8a8;font-weight:600}
+
+  .viewport-badge{
+    position:absolute;
+    bottom:10px;
+    right:12px;
+    font-size:10.5px;
+    color:#505050;
+    background:#0a0a0acc;
+    border:1px solid #222222;
+    border-radius:6px;
+    padding:3px 8px;
+    pointer-events:none;
+    font-variant-numeric:tabular-nums;
+  }
+</style>
+</head>
+<body>
+
+<h1>Minecraft LED Sign Generator</h1>
+<p class="sub">Paint a sign · drag empty canvas to pan · scroll to zoom · Ctrl+Z / Ctrl+Y to undo &amp; redo</p>
+
+<div class="wrap">
+
+  <!-- ============ PALETTE ============ -->
+  <section class="panel">
+    <h2>Palette</h2>
+    <div class="palette" id="palette"></div>
+    <p class="hint">
+      Hover a swatch to see its name and <strong>§</strong> code.<br>
+      The selected color is used when you paint a black square.
+    </p>
+  </section>
+
+  <!-- ============ SIGN CANVAS ============ -->
+  <section class="panel">
+    <h2>Sign Chain</h2>
+
+    <div class="tools">
+      <button class="btn" id="undoBtn" disabled>↶ Undo</button>
+      <button class="btn" id="redoBtn" disabled>↷ Redo</button>
+      <button class="btn" id="fillBtn">Fill</button>
+      <span class="tools-spacer"></span>
+      <button class="btn mode-btn" id="modeBtn" title="Switch sign type">
+        <span id="modeIcon"></span>
+        <span id="modeLabel">Hanging</span>
+      </button>
+    </div>
+
+    <div class="viewport" id="viewport">
+      <div class="world" id="world"></div>
+      <div class="viewport-badge" id="zoomBadge">100%</div>
+    </div>
+
+    <p class="hint">
+      Hover the <strong>crack between two signs</strong> — both sides slide apart and a pill-shaped <strong>+</strong>
+      appears so you can insert a new sign there. The outer <strong>+</strong> pills at each end are always visible.<br>
+      Use the <strong>Hanging / Regular</strong> button to switch sign types. Each sign has its own Copy and Clear buttons.
+    </p>
+  </section>
+
+</div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const ROWS = 4, COLS = 9;
+const HANGING_COLS = 6;   // hanging sign: 6 wide × 4 tall, with §l on every line
+const MAX_HISTORY = 60;
+
+const COLORS = [
+  { code:'0', hex:'#000000', name:'Black'        },
+  { code:'1', hex:'#0000aa', name:'Dark Blue'    },
+  { code:'2', hex:'#00aa00', name:'Dark Green'   },
+  { code:'3', hex:'#00aaaa', name:'Dark Aqua'    },
+  { code:'4', hex:'#aa0000', name:'Dark Red'     },
+  { code:'5', hex:'#aa00aa', name:'Dark Purple'  },
+  { code:'6', hex:'#ffaa00', name:'Gold'         },
+  { code:'7', hex:'#aaaaaa', name:'Gray'         },
+  { code:'8', hex:'#555555', name:'Dark Gray'    },
+  { code:'9', hex:'#5555ff', name:'Blue'         },
+  { code:'a', hex:'#55ff55', name:'Green'        },
+  { code:'b', hex:'#55ffff', name:'Aqua'         },
+  { code:'c', hex:'#ff5555', name:'Red'          },
+  { code:'d', hex:'#ff55ff', name:'Light Purple' },
+  { code:'e', hex:'#ffff55', name:'Yellow'       },
+  { code:'f', hex:'#ffffff', name:'White'        },
+  { code:'g', hex:'#ddd605', name:'Minecoin Gold' },
+  { code:'h', hex:'#e3d4d1', name:'Quartz'        },
+  { code:'i', hex:'#cecaca', name:'Iron'          },
+  { code:'j', hex:'#443a3b', name:'Netherite'     },
+  { code:'m', hex:'#971607', name:'Redstone'      },
+  { code:'n', hex:'#b4684d', name:'Copper'        },
+  { code:'p', hex:'#deb12d', name:'Gold Material' },
+  { code:'q', hex:'#119f36', name:'Emerald'       },
+  { code:'s', hex:'#2cbaa8', name:'Diamond'       },
+  { code:'t', hex:'#21497b', name:'Lapis'         },
+  { code:'u', hex:'#9a5cc6', name:'Amethyst'      },
+  { code:'v', hex:'#eb7114', name:'Resin'         },
+  { code:'w', hex:'#7a7a7a', name:'Material Gray' },
+];
+const HEX = Object.fromEntries(COLORS.map(c => [c.code, c.hex]));
+
+const TRASH_SVG =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="3 6 5 6 21 6"/>' +
+    '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>' +
+    '<path d="M10 11v6"/>' +
+    '<path d="M14 11v6"/>' +
+    '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>' +
+  '</svg>';
+
+const ICON_REGULAR =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<rect x="3" y="6" width="18" height="12" rx="1.5"/>' +
+    '<line x1="6.5" y1="10" x2="17.5" y2="10"/>' +
+    '<line x1="6.5" y1="14" x2="14" y2="14"/>' +
+  '</svg>';
+
+const ICON_HANGING =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<line x1="9" y1="2" x2="9" y2="6"/>' +
+    '<line x1="15" y1="2" x2="15" y2="6"/>' +
+    '<rect x="3" y="6" width="18" height="12" rx="1.5"/>' +
+    '<line x1="6.5" y1="10" x2="17.5" y2="10"/>' +
+    '<line x1="6.5" y1="14" x2="14" y2="14"/>' +
+  '</svg>';
+
+function createEmptyGrid() {
+  return Array.from({length: ROWS}, () => Array(COLS).fill('0'));
+}
+
+/* ---------- STATE ---------- */
+let signs      = [ createEmptyGrid() ];
+let selected   = 'c';
+let activeSign = 0;
+let signType   = 'regular';   // 'regular' | 'hanging'
+
+let undoStack = [];
+let redoStack = [];
+
+/* ---------- PAN / ZOOM ---------- */
+let panX = 0, panY = 0;
+let scale = 1;
+const MIN_SCALE = 0.3, MAX_SCALE = 3;
+
+/* ---------- DOM ---------- */
+const paletteEl  = document.getElementById('palette');
+const viewportEl = document.getElementById('viewport');
+const worldEl    = document.getElementById('world');
+const zoomBadge  = document.getElementById('zoomBadge');
+const undoBtn    = document.getElementById('undoBtn');
+const redoBtn    = document.getElementById('redoBtn');
+const modeBtn    = document.getElementById('modeBtn');
+const modeIcon   = document.getElementById('modeIcon');
+const modeLabel  = document.getElementById('modeLabel');
+
+let cellEls = [];
+let cardEls = [];
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function displayCols() {
+  return signType === 'hanging' ? HANGING_COLS : COLS;
+}
+
+/* ============================================================
+   PALETTE
+   ============================================================ */
+COLORS.forEach(col => {
+  const b = document.createElement('button');
+  b.className = 'swatch' + (col.code === selected ? ' active' : '');
+  b.dataset.code = col.code;
+  b.style.background = col.hex;
+  b.title = `${col.name} — §${col.code}`;
+  b.setAttribute('aria-label', col.name);
+  b.addEventListener('click', () => {
+    selected = col.code;
+    document.querySelectorAll('.swatch').forEach(s =>
+      s.classList.toggle('active', s.dataset.code === selected));
+  });
+  paletteEl.appendChild(b);
+});
+
+/* ============================================================
+   CELL STYLING
+   ============================================================ */
+function styleCell(el, code) {
+  const hex = HEX[code] || '#000000';
+  el.style.background = hex;
+  el.style.borderColor = (code === '0') ? '#454545' : 'rgba(255,255,255,.28)';
+  el.style.boxShadow = (code === '0') ? 'none' : `0 0 8px ${hex}66`;
+}
+
+/* ============================================================
+   MODE BUTTON
+   ============================================================ */
+function updateModeButton() {
+  if (signType === 'regular') {
+    modeIcon.innerHTML = ICON_HANGING;
+    modeLabel.textContent = 'Hanging';
+    modeBtn.title = 'Switch to hanging sign (6×4, §l per line)';
+  } else {
+    modeIcon.innerHTML = ICON_REGULAR;
+    modeLabel.textContent = 'Regular';
+    modeBtn.title = 'Switch to regular sign (9×4)';
+  }
+}
+
+function applySignType() {
+  const hanging = (signType === 'hanging');
+
+  document.querySelectorAll('.grid').forEach(g => {
+    g.classList.toggle('hanging', hanging);
+  });
+  document.querySelectorAll('.cell').forEach(c => {
+    const col = +c.dataset.c;
+    c.classList.toggle('hidden', hanging && col >= HANGING_COLS);
+  });
+
+  updateModeButton();
+}
+
+modeBtn.addEventListener('click', () => {
+  signType = (signType === 'regular') ? 'hanging' : 'regular';
+  applySignType();
+});
+
+/* ============================================================
+   CHAIN RENDERING
+   ============================================================ */
+function renderChain() {
+  worldEl.innerHTML = '';
+  cellEls = [];
+  cardEls = [];
+
+  worldEl.appendChild(makeEdge(0, true));
+
+  signs.forEach((signGrid, si) => {
+    const card = document.createElement('div');
+    card.className = 'sign-card' + (si === activeSign ? ' active-sign' : '');
+
+    if (signs.length > 1) {
+      const rm = document.createElement('button');
+      rm.className = 'remove-sign';
+      rm.textContent = '×';
+      rm.title = 'Remove this sign';
+      rm.setAttribute('aria-label', 'Remove this sign');
+      rm.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeSign(si);
+      });
+      card.appendChild(rm);
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+
+    cellEls[si] = [];
+    for (let r = 0; r < ROWS; r++) {
+      cellEls[si][r] = [];
+      for (let c = 0; c < COLS; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.sign = si;
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        styleCell(cell, signGrid[r][c]);
+        grid.appendChild(cell);
+        cellEls[si][r][c] = cell;
+      }
+    }
+    card.appendChild(grid);
+
+    /* action row: Copy + Clear */
+    const actions = document.createElement('div');
+    actions.className = 'sign-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn primary copy-sign';
+    copyBtn.textContent = 'Copy';
+    copyBtn.title = 'Copy all 4 lines';
+    copyBtn.addEventListener('click', () => copySignText(si, copyBtn));
+    actions.appendChild(copyBtn);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'btn icon-btn clear-sign';
+    clearBtn.title = 'Clear this sign';
+    clearBtn.setAttribute('aria-label', 'Clear this sign');
+    clearBtn.innerHTML = TRASH_SVG;
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearSign(si);
+    });
+    actions.appendChild(clearBtn);
+
+    card.appendChild(actions);
+
+    cardEls[si] = card;
+    worldEl.appendChild(card);
+
+    const atIndex = si + 1;
+    const isOuter = (atIndex === signs.length);
+    worldEl.appendChild(makeEdge(atIndex, isOuter));
+  });
+
+  applySignType();
+}
+
+function makeEdge(atIndex, isOuter) {
+  const edge = document.createElement('div');
+  edge.className = 'edge ' + (isOuter ? 'outer' : 'inner');
+
+  const b = document.createElement('button');
+  b.className = 'add-sign';
+  b.textContent = '+';
+  b.title = 'Insert a sign here';
+  b.setAttribute('aria-label', 'Insert a sign here');
+  b.addEventListener('click', () => addSign(atIndex));
+  edge.appendChild(b);
+
+  return edge;
+}
+
+function updateActiveSignHighlight() {
+  cardEls.forEach((card, i) =>
+    card.classList.toggle('active-sign', i === activeSign));
+}
+
+/* ============================================================
+   OUTPUT TEXT
+   ------------------------------------------------------------
+   Hanging mode: each line begins with §l (bold pixels, thicker
+   in-game), then runs of §<color>██… giving 6 blocks per line.
+   Regular mode: no §l, 9 blocks per line.
+   ============================================================ */
+function lineText(si, r) {
+  const n = displayCols();
+  const prefix = (signType === 'hanging') ? '§l' : '';
+  let out = prefix, cur = null;
+  for (let c = 0; c < n; c++) {
+    const code = signs[si][r][c];
+    if (code !== cur) { out += '§' + code; cur = code; }
+    out += '█';
+  }
+  return out;
+}
+
+/* ============================================================
+   HISTORY
+   ============================================================ */
+function snapshot() {
+  return signs.map(g => g.map(row => [...row]));
+}
+
+function pushHistory() {
+  undoStack.push(snapshot());
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack = [];
+  updateHistoryButtons();
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(snapshot());
+  signs = undoStack.pop();
+  if (activeSign >= signs.length) activeSign = signs.length - 1;
+  renderChain();
+  updateHistoryButtons();
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(snapshot());
+  signs = redoStack.pop();
+  if (activeSign >= signs.length) activeSign = signs.length - 1;
+  renderChain();
+  updateHistoryButtons();
+}
+
+function updateHistoryButtons() {
+  undoBtn.disabled = undoStack.length === 0;
+  redoBtn.disabled = redoStack.length === 0;
+}
+
+/* ============================================================
+   ADD / REMOVE / CLEAR SIGNS
+   ============================================================ */
+function addSign(atIndex) {
+  pushHistory();
+  signs.splice(atIndex, 0, createEmptyGrid());
+  activeSign = atIndex;
+  renderChain();
+}
+
+function removeSign(atIndex) {
+  if (signs.length <= 1) return;
+  pushHistory();
+  signs.splice(atIndex, 1);
+  if (activeSign >= signs.length) activeSign = signs.length - 1;
+  else if (activeSign > atIndex) activeSign--;
+  renderChain();
+}
+
+function clearSign(si) {
+  pushHistory();
+  const n = displayCols();
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < n; c++) {
+      signs[si][r][c] = '0';
+      styleCell(cellEls[si][r][c], '0');
+    }
+}
+
+/* ============================================================
+   TRANSFORM
+   ============================================================ */
+function applyTransform() {
+  worldEl.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  zoomBadge.textContent = Math.round(scale * 100) + '%';
+}
+
+/* ============================================================
+   INTERACTION
+   ============================================================ */
+let interaction = null;
+let paintMode = 'paint';
+let strokePushed = false;
+
+let panStartX = 0, panStartY = 0, panStartTX = 0, panStartTY = 0;
+
+worldEl.addEventListener('contextmenu', e => e.preventDefault());
+
+viewportEl.addEventListener('pointerdown', e => {
+  const cell = e.target.closest('.cell');
+
+  if (cell) {
+    e.preventDefault();
+    interaction = 'paint';
+    strokePushed = false;
+    viewportEl.classList.add('painting');
+
+    const si = +cell.dataset.sign;
+    const r  = +cell.dataset.r;
+    const c  = +cell.dataset.c;
+
+    if (activeSign !== si) {
+      activeSign = si;
+      updateActiveSignHighlight();
+    }
+
+    if (e.button === 2) {
+      paintMode = 'erase';
+    } else {
+      paintMode = (signs[si][r][c] !== '0') ? 'erase' : 'paint';
+    }
+
+    try { viewportEl.setPointerCapture(e.pointerId); } catch (_) {}
+    applyPaint(cell);
+    return;
+  }
+
+  if (e.target.closest('button')) return;
+  if (e.target.closest('.sign-card')) return;
+
+  if (e.button !== 0 && e.button !== 1) return;
+  e.preventDefault();
+  interaction = 'pan';
+  panStartX  = e.clientX;
+  panStartY  = e.clientY;
+  panStartTX = panX;
+  panStartTY = panY;
+  viewportEl.classList.add('panning');
+  try { viewportEl.setPointerCapture(e.pointerId); } catch (_) {}
+});
+
+viewportEl.addEventListener('pointermove', e => {
+  if (interaction === 'paint') {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = el && el.closest && el.closest('.cell');
+    if (cell && viewportEl.contains(cell) && !cell.classList.contains('hidden')) {
+      applyPaint(cell);
+    }
+  } else if (interaction === 'pan') {
+    panX = panStartTX + (e.clientX - panStartX);
+    panY = panStartTY + (e.clientY - panStartY);
+    applyTransform();
+  }
+});
+
+function endInteraction() {
+  interaction = null;
+  viewportEl.classList.remove('panning');
+  viewportEl.classList.remove('painting');
+}
+window.addEventListener('pointerup', endInteraction);
+window.addEventListener('pointercancel', endInteraction);
+
+function applyPaint(cell) {
+  const si = +cell.dataset.sign;
+  const r  = +cell.dataset.r;
+  const c  = +cell.dataset.c;
+  const code = (paintMode === 'erase') ? '0' : selected;
+  if (signs[si][r][c] === code) return;
+
+  if (!strokePushed) { pushHistory(); strokePushed = true; }
+
+  signs[si][r][c] = code;
+  styleCell(cellEls[si][r][c], code);
+}
+
+viewportEl.addEventListener('wheel', e => {
+  e.preventDefault();
+
+  const rect = viewportEl.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const factor   = Math.exp(-e.deltaY * 0.0015);
+  const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
+  const ratio    = newScale / scale;
+
+  panX = mx - ratio * (mx - panX);
+  panY = my - ratio * (my - panY);
+  scale = newScale;
+
+  applyTransform();
+}, { passive: false });
+
+viewportEl.addEventListener('dblclick', e => {
+  if (e.target.closest('.cell') || e.target.closest('button')) return;
+  if (e.target.closest('.sign-card')) return;
+  panX = 0; panY = 0; scale = 1;
+  applyTransform();
+});
+
+/* ============================================================
+   COPY
+   ============================================================ */
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      return true;
+    } catch (__) { return false; }
+  }
+}
+
+/* Copy all 4 lines (newline-separated) */
+async function copySignText(si, btn) {
+  const all = [0, 1, 2, 3].map(r => lineText(si, r)).join('\n');
+  const ok = await copyToClipboard(all);
+  const old = btn.textContent;
+
+  if (ok) {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = old;
+      btn.classList.remove('copied');
+    }, 1100);
+  } else {
+    btn.textContent = 'Copy failed';
+    setTimeout(() => { btn.textContent = old; }, 1100);
+  }
+}
+
+/* ============================================================
+   TOOLS
+   ============================================================ */
+document.getElementById('fillBtn').addEventListener('click', () => {
+  pushHistory();
+  const n = displayCols();
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < n; c++) {
+      signs[activeSign][r][c] = selected;
+      styleCell(cellEls[activeSign][r][c], selected);
+    }
+});
+
+undoBtn.addEventListener('click', undo);
+redoBtn.addEventListener('click', redo);
+
+window.addEventListener('keydown', e => {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+    e.preventDefault(); undo();
+  } else if (ctrl && (e.key.toLowerCase() === 'y' ||
+                     (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+    e.preventDefault(); redo();
+  }
+});
+
+/* ============================================================
+   GO
+   ============================================================ */
+renderChain();
+applyTransform();
+updateHistoryButtons();
+</script>
+</body>
+</html>
