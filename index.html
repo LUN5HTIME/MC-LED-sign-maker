@@ -36,11 +36,14 @@
 
   /* ---------------- palette ---------------- */
   .palette{
-    display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(46px, 1fr));
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
     gap:8px;
   }
   .swatch{
+    width:46px;
+    flex-shrink:0;
     aspect-ratio:1/1;
     border-radius:10px;
     border:2px solid #2a2a2a;
@@ -329,6 +332,61 @@
     padding:3px 8px;
     pointer-events:none;
     font-variant-numeric:tabular-nums;
+  }
+
+  /* Prevent accidental text selection on mobile */
+  .swatch, .btn, .mode-btn, .cell { 
+    user-select: none; 
+    -webkit-user-select: none; 
+  }
+
+  /* ---------------- Mobile Layout & Touch Adjustments ---------------- */
+  @media (max-width: 768px) {
+    body { padding: 12px 8px 24px; }
+    h1 { font-size: 18px; margin-bottom: 8px; }
+    .sub { font-size: 11px; margin-bottom: 16px; line-height: 1.4; }
+    .wrap { gap: 12px; }
+    .panel { padding: 12px; border-radius: 10px; }
+    .panel h2 { margin-bottom: 10px; }
+    .palette { gap: 6px; }
+    .swatch { width: 44px; }
+    
+    .tools { gap: 6px; margin-bottom: 12px; }
+    .btn { padding: 10px; font-size: 13px; flex-grow: 1; text-align: center; justify-content: center; }
+    .tools-spacer { display: none; }
+    
+    .viewport { height: 55vh; min-height: 320px; }
+    .sign-card { padding: 6px; }
+    .grid { grid-template-columns: repeat(9, 20px); gap: 3px; padding: 4px; }
+    .grid.hanging { grid-template-columns: repeat(6, 20px); }
+    .cell { border-width: 1px; }
+    
+    .sign-actions { margin-top: 6px; gap: 4px; }
+    .copy-sign { font-size: 11px; padding: 6px; }
+    .icon-btn { width: 32px; height: 32px; }
+    .hint { font-size: 11px; margin-top: 10px; }
+  }
+
+  /* Fix hover-only interactions for touch devices */
+  @media (hover: none) {
+    .remove-sign { opacity: 1; } /* Always show delete button */
+    
+    .edge.inner { width: 24px; }
+    .edge.inner .add-sign {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    
+    /* Disable the hover spread effect */
+    .edge.inner:hover ~ .sign-card,
+    .edge.inner:hover ~ .edge {
+      transform: none;
+    }
+    .sign-card:has(~ .edge.inner:hover),
+    .edge:has(~ .edge.inner:hover) {
+      transform: none;
+    }
   }
 </style>
 </head>
@@ -846,6 +904,63 @@ viewportEl.addEventListener('wheel', e => {
 
   applyTransform();
 }, { passive: false });
+
+/* ============================================================
+   PINCH TO ZOOM (Mobile)
+   ============================================================ */
+let touchStartDist = 0;
+let touchStartScale = 1;
+let isPinching = false;
+
+viewportEl.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    isPinching = true;
+    interaction = null; // Cancel panning
+    viewportEl.classList.remove('panning');
+    viewportEl.classList.remove('painting');
+
+    touchStartDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    touchStartScale = scale;
+    e.preventDefault();
+  }
+}, { passive: false });
+
+viewportEl.addEventListener('touchmove', e => {
+  if (isPinching && e.touches.length === 2) {
+    const dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    
+    if (touchStartDist > 0) {
+      const factor = dist / touchStartDist;
+      let newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, touchStartScale * factor));
+
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const rect = viewportEl.getBoundingClientRect();
+      const mx = midX - rect.left;
+      const my = midY - rect.top;
+
+      const ratio = newScale / scale;
+      panX = mx - ratio * (mx - panX);
+      panY = my - ratio * (my - panY);
+      scale = newScale;
+
+      applyTransform();
+    }
+    e.preventDefault();
+  }
+}, { passive: false });
+
+viewportEl.addEventListener('touchend', e => {
+  if (e.touches.length < 2) {
+    isPinching = false;
+  }
+});
 
 viewportEl.addEventListener('dblclick', e => {
   if (e.target.closest('.cell') || e.target.closest('button')) return;
